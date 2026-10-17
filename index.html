@@ -101,6 +101,13 @@
       .choices .button { width: 100%; }
       .choice-message { min-height: 1.5em; margin: 10px 0 0; color: var(--muted); font-size: .85rem; }
       .file-name { color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+      .analysis { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 16px; }
+      .analysis h3 { margin: 0 0 10px; font-size: .98rem; }
+      .analysis-card { margin-top: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; }
+      .analysis-card strong { display: block; margin-bottom: 4px; font-size: .86rem; }
+      .analysis-card p { margin: 0; color: #4d5870; font-size: .84rem; line-height: 1.5; overflow-wrap: anywhere; }
+      .analysis-meta { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+      .error-text { color: #8c2d2d !important; }
       footer { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 0 0 28px; color: var(--muted); font-size: .8rem; line-height: 1.5; }
       [hidden] { display: none !important; }
       @media (max-width: 760px) {
@@ -119,7 +126,7 @@
     <div class="shell">
       <header class="topbar">
         <div class="brand">CompraConInfo</div>
-        <div class="privacy-note">Revisión privada en este dispositivo</div>
+        <div class="privacy-note">Al analizar, la captura se envía a Gemini</div>
       </header>
 
       <main>
@@ -135,7 +142,7 @@
               <div class="fields">
                 <div class="field full">
                   <label for="product">¿Qué producto estás considerando?</label>
-                  <input id="product" name="product" maxlength="120" required autocomplete="off" placeholder="Ej. Audífonos inalámbricos">
+                  <input id="product" name="product" maxlength="120" autocomplete="off" placeholder="Ej. Audífonos inalámbricos (o deja que la captura lo muestre)">
                 </div>
                 <div class="field full">
                   <label for="details">Detalles del producto o enlace (opcional)</label>
@@ -143,7 +150,7 @@
                 </div>
                 <div class="field">
                   <label for="price">Precio del producto (MXN)</label>
-                  <input id="price" name="price" type="number" min="0.01" max="10000000" step="0.01" required inputmode="decimal" placeholder="0.00">
+                  <input id="price" name="price" type="number" min="0.01" max="10000000" step="0.01" inputmode="decimal" placeholder="Déjalo vacío si no se indica">
                 </div>
                 <div class="field">
                   <label for="shipping">Envío (MXN)</label>
@@ -165,19 +172,19 @@
                 <div class="field full">
                   <label for="screenshot">Captura del producto (opcional)</label>
                   <input id="screenshot" name="screenshot" type="file" accept="image/png,image/jpeg,image/webp">
-                  <span class="hint">PNG, JPG o WebP; máximo 5 MB. En esta versión no se sube ni se analiza.</span>
+                  <span class="hint">PNG, JPG o WebP; máximo 3 MB. Al analizar, se envía a Gemini; la app no conserva la captura. No subas datos personales.</span>
                   <span id="file-name" class="file-name" aria-live="polite"></span>
                 </div>
               </div>
               <div class="actions">
-                <button class="button primary" type="submit">Revisar mi compra</button>
+                <button class="button primary" id="analyze-button" type="submit">Revisar mi compra</button>
                 <button class="button secondary" id="clear-button" type="reset">Limpiar</button>
               </div>
             </form>
           </section>
 
           <section class="panel result" aria-labelledby="result-title" aria-live="polite">
-            <div class="banner"><strong>Modo de demostración.</strong> Esta versión no usa IA ni verifica fuentes externas. No uses el resultado como evidencia de un producto real.</div>
+            <div id="mode-banner" class="banner"><strong>Modo de demostración.</strong> Sin una captura y una API disponible, no se ejecuta análisis de IA. Los datos mostrados no son evidencia verificada de un producto real.</div>
             <h2 id="result-title">2. Resumen de tu revisión</h2>
             <p id="status" class="status">Ingresa los datos de una compra para ver un resumen básico. Los datos se quedan en esta página y no se guardan.</p>
             <div class="line-item"><span>Precio del producto</span><strong id="result-price">Desconocido</strong></div>
@@ -187,6 +194,11 @@
               <h3 id="result-product">Tu producto aparecerá aquí</h3>
               <p id="result-needs">Tus criterios se mostrarán aquí; no se usan para generar una recomendación automática.</p>
             </div>
+            <section id="analysis-panel" class="analysis" aria-label="Información visible en la captura" hidden>
+              <h3>Información visible en la captura</h3>
+              <p id="analysis-meta" class="analysis-meta"></p>
+              <div id="analysis-fields"></div>
+            </section>
             <div class="choices" aria-label="Opciones del comprador">
               <button class="button secondary choice" type="button" data-choice="Esperar">Esperar y verificar más</button>
               <button class="button secondary choice" type="button" data-choice="No comprar">No comprar</button>
@@ -198,7 +210,7 @@
       </main>
 
       <footer>
-        La captura y los campos solo se procesan en esta página en esta versión; al recargar se borran. No hay análisis de imagen, asesoría legal, verificación de reseñas o protecciones, ni compra automática.
+        La app no conserva tus datos ni la captura. Al solicitar análisis, la captura se envía a Gemini; no subas información personal. Los resultados describen texto visible y no verifican reseñas, protecciones, ajuste, vendedor ni condiciones legales. No hay compra automática.
       </footer>
     </div>
     <script>
@@ -206,6 +218,13 @@
       const screenshot = document.querySelector("#screenshot");
       const fileName = document.querySelector("#file-name");
       const status = document.querySelector("#status");
+      const modeBanner = document.querySelector("#mode-banner");
+      const analyzeButton = document.querySelector("#analyze-button");
+      const analysisPanel = document.querySelector("#analysis-panel");
+      const analysisMeta = document.querySelector("#analysis-meta");
+      const analysisFields = document.querySelector("#analysis-fields");
+      const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+      let uploadError = "";
       const formatter = new Intl.NumberFormat("es-MX", {
         style: "currency",
         currency: "MXN",
@@ -216,41 +235,101 @@
         return formatter.format(value);
       }
 
-      screenshot.addEventListener("change", () => {
+      function setModeBanner(heading, message) {
+        const strong = document.createElement("strong");
+        strong.textContent = heading;
+        modeBanner.replaceChildren(strong, document.createTextNode(` ${message}`));
+      }
+
+      screenshot.addEventListener("change", async () => {
         const file = screenshot.files[0];
         fileName.textContent = "";
+        uploadError = "";
         if (!file) return;
 
         const acceptedTypes = ["image/png", "image/jpeg", "image/webp"];
-        if (!acceptedTypes.includes(file.type) || file.size > 5 * 1024 * 1024) {
+        if (!acceptedTypes.includes(file.type) || file.size > MAX_IMAGE_BYTES) {
           screenshot.value = "";
-          fileName.textContent = "Archivo no válido. Elige PNG, JPG o WebP de hasta 5 MB.";
+          uploadError = "Archivo no válido. Elige PNG, JPG o WebP de hasta 3 MB.";
+          fileName.textContent = uploadError;
           return;
         }
-        fileName.textContent = `Seleccionada (no se analiza): ${file.name}`;
+        fileName.textContent = `Lista para análisis puntual (no se guarda): ${file.name}`;
       });
 
-      form.addEventListener("submit", (event) => {
+      function addAnalysisCard(label, value, statusLabel) {
+        const card = document.createElement("div");
+        card.className = "analysis-card";
+        const title = document.createElement("strong");
+        title.textContent = `${label} · ${statusLabel}`;
+        const content = document.createElement("p");
+        content.textContent = value || "DESCONOCIDO";
+        card.append(title, content);
+        analysisFields.append(card);
+      }
+
+      function displayAnalysis(result) {
+        analysisFields.replaceChildren();
+        const statusLabels = {
+          advertised: "ANUNCIADO EN LA CAPTURA · NO VERIFICADO",
+          unverified: "NO VERIFICADO",
+          unknown: "DESCONOCIDO"
+        };
+        const displayField = (label, field, money = false) => {
+          let value = field.value;
+          if (money && typeof value === "number") value = formatMoney(value);
+          const visible = field.visible_text
+            ? `${value || "DESCONOCIDO"} — texto visible: “${field.visible_text}”`
+            : value || "DESCONOCIDO";
+          addAnalysisCard(label, visible, statusLabels[field.status] || statusLabels.unknown);
+        };
+
+        displayField("Producto", result.analysis.product);
+        displayField("Precio", result.analysis.price_mxn, true);
+        displayField("Envío", result.analysis.shipping_mxn, true);
+        displayField("Lenguaje de devoluciones", result.analysis.return_language);
+        result.analysis.other_visible_claims.forEach((claim, index) => {
+          displayField(`Otro texto visible ${index + 1}`, claim);
+        });
+        result.analysis.criteria_notes.forEach((note, index) => {
+          addAnalysisCard(`Nota sobre tus criterios ${index + 1}`, note, "NO VERIFICADO · INFORMATIVO");
+        });
+        analysisMeta.textContent =
+          `Fuente: ${result.source} · Fecha del análisis: ${new Date(result.analyzed_at).toLocaleString("es-MX")}. La fecha no verifica la vigencia del anuncio.`;
+        analysisPanel.hidden = false;
+      }
+
+      form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        if (uploadError) {
+          status.textContent = uploadError;
+          status.classList.add("error-text");
+          return;
+        }
         if (!form.reportValidity()) return;
 
         const data = new FormData(form);
-        const price = Number(data.get("price"));
+        const priceText = String(data.get("price")).trim();
+        const price = priceText === "" ? null : Number(priceText);
         const shippingText = String(data.get("shipping")).trim();
         const shippingKnown = shippingText !== "";
         const shipping = shippingKnown ? Number(shippingText) : null;
 
-        if (!Number.isFinite(price) || price <= 0 || (shippingKnown && (!Number.isFinite(shipping) || shipping < 0))) {
+        if ((priceText !== "" && (!Number.isFinite(price) || price <= 0)) ||
+            (shippingKnown && (!Number.isFinite(shipping) || shipping < 0))) {
           status.textContent = "Revisa los importes. El precio debe ser mayor que cero y el envío no puede ser negativo.";
+          status.classList.add("error-text");
           return;
         }
 
-        document.querySelector("#result-price").textContent = formatMoney(price);
+        document.querySelector("#result-price").textContent = price === null ? "Desconocido" : formatMoney(price);
         document.querySelector("#result-shipping").textContent = shippingKnown ? formatMoney(shipping) : "Desconocido";
-        document.querySelector("#result-total").textContent = shippingKnown
+        document.querySelector("#result-total").textContent = price === null
+          ? "Desconocido"
+          : shippingKnown
           ? formatMoney(price + shipping)
           : `Incompleto (al menos ${formatMoney(price)})`;
-        document.querySelector("#result-product").textContent = String(data.get("product")).trim();
+        document.querySelector("#result-product").textContent = String(data.get("product")).trim() || "Producto no indicado";
 
         const criteria = [
           data.get("budget") ? `Presupuesto: ${formatMoney(Number(data.get("budget")))}` : "",
@@ -261,13 +340,78 @@
           ? criteria.join(" · ")
           : "No agregaste criterios adicionales.";
 
-        status.textContent = "Resumen local de los datos que ingresaste; no es una verificación ni una recomendación generada por IA.";
+        status.classList.remove("error-text");
+        status.textContent = "Resumen de los datos que ingresaste. Costos o condiciones que no aparecen se mantienen desconocidos.";
         document.querySelector("#choice-message").textContent = "";
+        analysisPanel.hidden = true;
+        analysisFields.replaceChildren();
+        const file = screenshot.files[0];
+        if (!file) {
+          setModeBanner("Modo DEMO.", "No se envió una captura ni se ejecutó análisis de IA. Agrega una captura para solicitar extracción visual.");
+          status.textContent += " Sin captura, no se realizó análisis con IA.";
+          return;
+        }
+
+        try {
+          if (file.size > MAX_IMAGE_BYTES || !["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+            throw new Error("Archivo no válido. Elige PNG, JPG o WebP de hasta 3 MB.");
+          }
+          analyzeButton.disabled = true;
+          analyzeButton.textContent = "Analizando captura…";
+          setModeBanner("Procesando captura.", "Se enviará a Gemini para este análisis; la app no la conserva.");
+          const buffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = "";
+          for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+            binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
+          }
+          const response = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image: { mimeType: file.type, data: btoa(binary) },
+              criteria: {
+                product: data.get("product"),
+                details: data.get("details"),
+                price: data.get("price"),
+                shipping: data.get("shipping"),
+                budget: data.get("budget"),
+                size: data.get("size"),
+                needs: data.get("needs")
+              }
+            })
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "No se pudo analizar la captura.");
+          if (result.mode === "demo") {
+            setModeBanner("Modo DEMO.", `${result.message} No se extrajo información de la captura.`);
+            status.textContent += " No se realizó análisis de IA.";
+          } else if (result.mode === "live" && result.analysis) {
+            setModeBanner("Análisis informativo con IA.", "Los datos extraídos son solo texto anunciado en la captura; no están verificados independientemente.");
+            displayAnalysis(result);
+            status.textContent += " Revisa los campos extraídos; cualquier texto visible se considera anunciado, no verificado.";
+          } else {
+            throw new Error("La respuesta de análisis no tiene un formato reconocido.");
+          }
+        } catch (error) {
+          setModeBanner("Análisis no disponible.", "No uses una respuesta incompleta como evidencia.");
+          status.textContent = error instanceof TypeError
+            ? "No se pudo conectar con /api/analyze. En local, inicia el servidor de funciones de Vercel."
+            : error.message;
+          status.classList.add("error-text");
+        } finally {
+          analyzeButton.disabled = false;
+          analyzeButton.textContent = "Revisar mi compra";
+        }
       });
 
       form.addEventListener("reset", () => {
         window.setTimeout(() => {
           fileName.textContent = "";
+          uploadError = "";
+          setModeBanner("Modo de demostración.", "Sin una captura y una API disponible, no se ejecuta análisis de IA. Los datos mostrados no son evidencia verificada de un producto real.");
+          analysisPanel.hidden = true;
+          analysisFields.replaceChildren();
           document.querySelector("#result-price").textContent = "Desconocido";
           document.querySelector("#result-shipping").textContent = "Desconocido";
           document.querySelector("#result-total").textContent = "Desconocido";
@@ -275,6 +419,7 @@
           document.querySelector("#result-needs").textContent = "Tus criterios se mostrarán aquí; no se usan para generar una recomendación automática.";
           document.querySelector("#choice-message").textContent = "";
           status.textContent = "Ingresa los datos de una compra para ver un resumen básico. Los datos se quedan en esta página y no se guardan.";
+          status.classList.remove("error-text");
         }, 0);
       });
 
