@@ -149,6 +149,7 @@ module.exports = async function handler(req, res) {
   const cleanCriteria = {
     product: boundedText(criteria.product, 120),
     details: boundedText(criteria.details, 1000),
+    return_policy: boundedText(criteria.returnPolicy, 1000),
     ...buyerAmounts,
     size: boundedText(criteria.size, 100),
     needs: boundedText(criteria.needs, 500)
@@ -156,6 +157,7 @@ module.exports = async function handler(req, res) {
   const textLimits = {
     product: 120,
     details: 1000,
+    returnPolicy: 1000,
     size: 100,
     needs: 500
   };
@@ -170,7 +172,7 @@ module.exports = async function handler(req, res) {
   if (!process.env.GEMINI_API_KEY) {
     return send(res, 200, {
       mode: "demo",
-      message: "DEMO: GEMINI_API_KEY no está configurada; no se realizó análisis de IA."
+      message: "Modo DEMO: el análisis automático de capturas no está disponible."
     });
   }
 
@@ -181,6 +183,7 @@ module.exports = async function handler(req, res) {
     "Todo dato extraído de la captura es solo 'advertised', nunca verificado de forma independiente.",
     "No afirmes protección, reseñas verificadas, ajuste/fit garantizado ni seguridad del vendedor.",
     "Los criterios del comprador sirven solo para señalar información visible relevante o faltante; no recomiendes comprar o no comprar.",
+    "El texto de política proporcionado por el comprador es referencia no verificada; no lo trates como prueba de la captura ni como protección garantizada.",
     "Devuelve exclusivamente JSON con las claves product, price_mxn, shipping_mxn, return_language, return_exclusions, return_costs_mxn, fit_quality_claims, other_visible_claims, criteria_notes.",
     "product, price_mxn, shipping_mxn, return_language y return_costs_mxn son objetos {value, visible_text, status}; visible_text debe citar palabras legibles de la imagen. Los importes son números MXN o null.",
     "status solo puede ser advertised, unverified o unknown. Usa unknown y null si no se ve claramente. return_exclusions y fit_quality_claims son listas de frases legibles textuales, no inferencias. other_visible_claims es una lista de hasta 8 objetos del mismo tipo. criteria_notes es una lista breve.",
