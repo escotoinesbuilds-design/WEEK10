@@ -49,9 +49,6 @@ function validateAnalysis(value) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       throw new Error("Invalid analysis field");
     }
-    const status = ["advertised", "unverified", "unknown"].includes(item.status)
-      ? item.status
-      : "unknown";
     const visibleText = boundedText(item.visible_text, 300) || null;
     let result = null;
     if (kind === "money") {
@@ -60,27 +57,28 @@ function validateAnalysis(value) {
     } else if (typeof item.value === "string") {
       result = boundedText(item.value, 500) || null;
     }
-    if (status === "unknown" || !visibleText) result = null;
+    if (!visibleText) result = null;
     return {
       value: result,
       visible_text: result === null ? null : visibleText,
-      status: result === null ? "unknown" : status
+      status: result === null ? "unknown" : "advertised"
     };
   };
 
   const claims = Array.isArray(value.other_visible_claims)
     ? value.other_visible_claims.slice(0, 8).map((item) => {
       const visibleText = boundedText(item && item.visible_text, 300) || null;
-      const status = ["advertised", "unverified", "unknown"].includes(item && item.status)
-        ? item.status : "unknown";
       return {
-        value: visibleText && status !== "unknown"
+        value: visibleText
           ? boundedText(item && item.value, 300) || visibleText
           : "DESCONOCIDO",
         visible_text: visibleText,
-        status: visibleText ? status : "unknown"
+        status: visibleText ? "advertised" : "unknown"
       };
     })
+    : [];
+  const textList = (items) => Array.isArray(items)
+    ? items.slice(0, 8).map((item) => boundedText(item, 300)).filter(Boolean)
     : [];
 
   return {
@@ -88,6 +86,9 @@ function validateAnalysis(value) {
     price_mxn: field(value.price_mxn, "money"),
     shipping_mxn: field(value.shipping_mxn, "money"),
     return_language: field(value.return_language, "text"),
+    return_exclusions: textList(value.return_exclusions),
+    return_costs_mxn: field(value.return_costs_mxn, "money"),
+    fit_quality_claims: textList(value.fit_quality_claims),
     other_visible_claims: claims,
     criteria_notes: Array.isArray(value.criteria_notes)
       ? value.criteria_notes.slice(0, 5).map((note) => boundedText(note, 300)).filter(Boolean)
@@ -180,9 +181,9 @@ module.exports = async function handler(req, res) {
     "Todo dato extraído de la captura es solo 'advertised', nunca verificado de forma independiente.",
     "No afirmes protección, reseñas verificadas, ajuste/fit garantizado ni seguridad del vendedor.",
     "Los criterios del comprador sirven solo para señalar información visible relevante o faltante; no recomiendes comprar o no comprar.",
-    "Devuelve exclusivamente JSON con las claves product, price_mxn, shipping_mxn, return_language, other_visible_claims, criteria_notes.",
-    "Los primeros cuatro campos son objetos {value, visible_text, status}; los importes son números MXN o null.",
-    "status solo puede ser advertised, unverified o unknown. other_visible_claims es una lista de hasta 8 objetos del mismo tipo. criteria_notes es una lista breve.",
+    "Devuelve exclusivamente JSON con las claves product, price_mxn, shipping_mxn, return_language, return_exclusions, return_costs_mxn, fit_quality_claims, other_visible_claims, criteria_notes.",
+    "product, price_mxn, shipping_mxn, return_language y return_costs_mxn son objetos {value, visible_text, status}; visible_text debe citar palabras legibles de la imagen. Los importes son números MXN o null.",
+    "status solo puede ser advertised, unverified o unknown. Usa unknown y null si no se ve claramente. return_exclusions y fit_quality_claims son listas de frases legibles textuales, no inferencias. other_visible_claims es una lista de hasta 8 objetos del mismo tipo. criteria_notes es una lista breve.",
     `Criterios proporcionados por el comprador: ${JSON.stringify(cleanCriteria)}`
   ].join("\n");
 

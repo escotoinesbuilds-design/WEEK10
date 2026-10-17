@@ -52,7 +52,7 @@
       .field.full { grid-column: 1 / -1; }
       label, .label { font-size: .88rem; font-weight: 650; }
       .hint { color: var(--muted); font-size: .8rem; line-height: 1.45; }
-      input, textarea {
+      input, textarea, select {
         width: 100%;
         border: 1px solid #cdd5e4;
         border-radius: 9px;
@@ -106,7 +106,13 @@
       .analysis-card { margin-top: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; }
       .analysis-card strong { display: block; margin-bottom: 4px; font-size: .86rem; }
       .analysis-card p { margin: 0; color: #4d5870; font-size: .84rem; line-height: 1.5; overflow-wrap: anywhere; }
-      .analysis-meta { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+      .analysis-meta { margin: 4px 0 12px; color: var(--muted); font-size: .78rem; line-height: 1.5; }
+      .correction { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 16px; }
+      .correction h3 { margin: 0 0 8px; font-size: .98rem; }
+      .correction p { margin: 0 0 12px; color: var(--muted); font-size: .82rem; line-height: 1.5; }
+      .correction-status { margin: 12px 0 0; border-radius: 8px; padding: 10px 12px; background: #fff8e5; color: #5c4816; font-size: .82rem; line-height: 1.5; }
+      .correction-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .correction-actions .button { min-height: 38px; padding: 8px 12px; font-size: .84rem; }
       .error-text { color: #8c2d2d !important; }
       footer { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 0 0 28px; color: var(--muted); font-size: .8rem; line-height: 1.5; }
       [hidden] { display: none !important; }
@@ -190,14 +196,44 @@
             <div class="line-item"><span>Precio del producto</span><strong id="result-price">Desconocido</strong></div>
             <div class="line-item"><span>Envío</span><strong id="result-shipping">Desconocido</strong></div>
             <div class="line-item total"><span>Total conocido</span><strong id="result-total">Desconocido</strong></div>
+            <p id="total-note" class="analysis-meta">Se calculará con los importes conocidos; no incluye costos desconocidos.</p>
             <div class="buyer-summary">
               <h3 id="result-product">Tu producto aparecerá aquí</h3>
               <p id="result-needs">Tus criterios se mostrarán aquí; no se usan para generar una recomendación automática.</p>
             </div>
-            <section id="analysis-panel" class="analysis" aria-label="Información visible en la captura" hidden>
-              <h3>Información visible en la captura</h3>
-              <p id="analysis-meta" class="analysis-meta"></p>
-              <div id="analysis-fields"></div>
+            <section id="analysis-panel" class="analysis" aria-label="Tarjetas de evidencia" hidden>
+              <h3>Tarjetas de evidencia</h3>
+              <p class="analysis-meta">“Anunciado” describe únicamente lo visible en la captura. Ninguna tarjeta verifica de forma independiente precio, políticas, calidad, ajuste, reseñas o vendedor.</p>
+              <div id="evidence-cards"></div>
+            </section>
+            <section class="correction" aria-labelledby="correction-title">
+              <h3 id="correction-title">Solicitar corrección</h3>
+              <p>La solicitud queda como borrador local en esta página. No se envía a nadie ni significa que una persona la haya revisado. No incluyas datos personales.</p>
+              <form id="correction-form">
+                <div class="field">
+                  <label for="correction-field">Dato que quieres corregir</label>
+                  <select id="correction-field" required>
+                    <option value="">Selecciona un dato</option>
+                    <option>Precio</option>
+                    <option>Envío</option>
+                    <option>Política de devoluciones</option>
+                    <option>Exclusiones o costos de devolución</option>
+                    <option>Ajuste o calidad</option>
+                    <option>Total de compra</option>
+                    <option>Otro dato</option>
+                  </select>
+                </div>
+                <div class="field" style="margin-top: 12px">
+                  <label for="correction-reason">¿Qué está mal y qué debería decir?</label>
+                  <textarea id="correction-reason" maxlength="500" required placeholder="Describe el dato y por qué lo consideras incorrecto."></textarea>
+                </div>
+                <div class="correction-actions">
+                  <button class="button secondary" type="submit">Solicitar corrección (borrador local)</button>
+                  <button class="button secondary" id="edit-correction" type="button" hidden>Editar borrador</button>
+                  <button class="button secondary" id="copy-correction" type="button" hidden>Copiar borrador</button>
+                </div>
+              </form>
+              <p id="correction-status" class="correction-status" role="status">Sin borrador local.</p>
             </section>
             <div class="choices" aria-label="Opciones del comprador">
               <button class="button secondary choice" type="button" data-choice="Esperar">Esperar y verificar más</button>
@@ -221,10 +257,17 @@
       const modeBanner = document.querySelector("#mode-banner");
       const analyzeButton = document.querySelector("#analyze-button");
       const analysisPanel = document.querySelector("#analysis-panel");
-      const analysisMeta = document.querySelector("#analysis-meta");
-      const analysisFields = document.querySelector("#analysis-fields");
+      const evidenceCards = document.querySelector("#evidence-cards");
+      const correctionForm = document.querySelector("#correction-form");
+      const correctionField = document.querySelector("#correction-field");
+      const correctionReason = document.querySelector("#correction-reason");
+      const correctionStatus = document.querySelector("#correction-status");
+      const editCorrectionButton = document.querySelector("#edit-correction");
+      const copyCorrectionButton = document.querySelector("#copy-correction");
       const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
       let uploadError = "";
+      let correctionDraft = null;
+      let evidenceDate = "";
       const formatter = new Intl.NumberFormat("es-MX", {
         style: "currency",
         currency: "MXN",
@@ -257,47 +300,182 @@
         fileName.textContent = `Lista para análisis puntual (no se guarda): ${file.name}`;
       });
 
-      function addAnalysisCard(label, value, statusLabel) {
+      const statusLabels = {
+        advertised: "ANUNCIADO",
+        supported: "SUSTENTADO (solo por la fuente indicada)",
+        unverified: "NO VERIFICADO",
+        unknown: "DESCONOCIDO"
+      };
+
+      function addEvidenceCard(category, value, source, status, details = "") {
         const card = document.createElement("div");
         card.className = "analysis-card";
         const title = document.createElement("strong");
-        title.textContent = `${label} · ${statusLabel}`;
+        title.textContent = `${category} · ${statusLabels[status] || statusLabels.unknown}`;
         const content = document.createElement("p");
         content.textContent = value || "DESCONOCIDO";
-        card.append(title, content);
-        analysisFields.append(card);
+        const metadata = document.createElement("p");
+        metadata.className = "analysis-meta";
+        metadata.textContent = `Fuente: ${source} · Fecha consultada: ${evidenceDate}`;
+        if (details) metadata.textContent += ` · ${details}`;
+        card.append(title, content, metadata);
+        evidenceCards.append(card);
       }
 
-      function displayAnalysis(result) {
-        analysisFields.replaceChildren();
-        const statusLabels = {
-          advertised: "ANUNCIADO EN LA CAPTURA · NO VERIFICADO",
-          unverified: "NO VERIFICADO",
-          unknown: "DESCONOCIDO"
-        };
-        const displayField = (label, field, money = false) => {
-          let value = field.value;
-          if (money && typeof value === "number") value = formatMoney(value);
-          const visible = field.visible_text
-            ? `${value || "DESCONOCIDO"} — texto visible: “${field.visible_text}”`
-            : value || "DESCONOCIDO";
-          addAnalysisCard(label, visible, statusLabels[field.status] || statusLabels.unknown);
-        };
+      function addScreenshotField(category, field, money = false, details = "") {
+        const value = field && field.value;
+        const visibleText = field && field.visible_text;
+        if (value === null || value === undefined || !visibleText) {
+          addEvidenceCard(category, "DESCONOCIDO", "Captura del producto; no se distingue información legible", "unknown");
+          return;
+        }
+        addEvidenceCard(
+          category,
+          `${money ? formatMoney(value) : value} · Texto visible: “${visibleText}”`,
+          "Captura del producto proporcionada por la persona compradora",
+          field.status === "advertised" ? "advertised" : "unverified",
+          details
+        );
+      }
 
-        displayField("Producto", result.analysis.product);
-        displayField("Precio", result.analysis.price_mxn, true);
-        displayField("Envío", result.analysis.shipping_mxn, true);
-        displayField("Lenguaje de devoluciones", result.analysis.return_language);
-        result.analysis.other_visible_claims.forEach((claim, index) => {
-          displayField(`Otro texto visible ${index + 1}`, claim);
-        });
-        result.analysis.criteria_notes.forEach((note, index) => {
-          addAnalysisCard(`Nota sobre tus criterios ${index + 1}`, note, "NO VERIFICADO · INFORMATIVO");
-        });
-        analysisMeta.textContent =
-          `Fuente: ${result.source} · Fecha del análisis: ${new Date(result.analyzed_at).toLocaleString("es-MX")}. La fecha no verifica la vigencia del anuncio.`;
+      function renderEvidence(buyerData, screenshotAnalysis = null) {
+        evidenceCards.replaceChildren();
+        const userInput = "Dato ingresado por la persona compradora";
+        const unknownSource = "No se proporcionó una fuente verificable";
+        const price = buyerData.price === "" ? null : Number(buyerData.price);
+        const shipping = buyerData.shipping === "" ? null : Number(buyerData.shipping);
+
+        if (price !== null) {
+          addEvidenceCard("Precio del producto", formatMoney(price), userInput, "unverified");
+        } else if (screenshotAnalysis) {
+          addScreenshotField("Precio del producto", screenshotAnalysis.price_mxn, true);
+        } else {
+          addEvidenceCard("Precio del producto", "DESCONOCIDO", unknownSource, "unknown");
+        }
+        if (shipping !== null) {
+          addEvidenceCard("Envío", formatMoney(shipping), userInput, "unverified");
+        } else if (screenshotAnalysis) {
+          addScreenshotField("Envío", screenshotAnalysis.shipping_mxn, true);
+        } else {
+          addEvidenceCard("Envío", "DESCONOCIDO", unknownSource, "unknown");
+        }
+
+        if (screenshotAnalysis) {
+          if (price !== null) addScreenshotField("Precio visible en captura", screenshotAnalysis.price_mxn, true);
+          if (shipping !== null) addScreenshotField("Envío visible en captura", screenshotAnalysis.shipping_mxn, true);
+          addScreenshotField("Política de devoluciones", screenshotAnalysis.return_language);
+          if (screenshotAnalysis.return_exclusions.length) {
+            screenshotAnalysis.return_exclusions.forEach((exclusion) =>
+              addEvidenceCard("Exclusión anunciada", exclusion, "Captura del producto proporcionada por la persona compradora", "advertised")
+            );
+          } else {
+            addEvidenceCard("Exclusiones de devolución", "DESCONOCIDO", unknownSource, "unknown");
+          }
+          if (screenshotAnalysis.return_costs_mxn.value !== null) {
+            addScreenshotField(
+              "Costo de devolución divulgado (si aplica)",
+              screenshotAnalysis.return_costs_mxn,
+              true,
+              "Costo anunciado; verifica si aplica a tu caso."
+            );
+            addScreenshotField(
+              "Exposición condicional si devuelves",
+              screenshotAnalysis.return_costs_mxn,
+              true,
+              "No implica protección ni devolución gratuita garantizada."
+            );
+          } else {
+            addEvidenceCard("Costo de devolución divulgado (si aplica)", "DESCONOCIDO", unknownSource, "unknown");
+            addEvidenceCard("Exposición condicional si devuelves", "DESCONOCIDO; no se garantiza cobertura o devolución sin costo", unknownSource, "unknown");
+          }
+          addEvidenceCard("Ruta para reclamación", "DESCONOCIDO", unknownSource, "unknown");
+          if (screenshotAnalysis.fit_quality_claims.length) {
+            screenshotAnalysis.fit_quality_claims.forEach((claim) =>
+              addEvidenceCard("Afirmación visible sobre ajuste/calidad", claim, "Captura del producto proporcionada por la persona compradora", "advertised")
+            );
+          } else {
+            addEvidenceCard("Ajuste o calidad", "DESCONOCIDO; no hay información legible que lo establezca", unknownSource, "unknown");
+          }
+          if (screenshotAnalysis.other_visible_claims.length) {
+            screenshotAnalysis.other_visible_claims.forEach((claim) => {
+              const status = claim.status === "advertised" ? "advertised" : "unverified";
+              addEvidenceCard("Otro texto visible", claim.visible_text || claim.value, "Captura del producto proporcionada por la persona compradora", status);
+            });
+          }
+        } else {
+          addEvidenceCard("Política de devoluciones", "DESCONOCIDO", unknownSource, "unknown");
+          addEvidenceCard("Exclusiones de devolución", "DESCONOCIDO", unknownSource, "unknown");
+          addEvidenceCard("Costo de devolución divulgado (si aplica)", "DESCONOCIDO", unknownSource, "unknown");
+          addEvidenceCard("Exposición condicional si devuelves", "DESCONOCIDO; no se garantiza cobertura o devolución sin costo", unknownSource, "unknown");
+          addEvidenceCard("Ruta para reclamación", "DESCONOCIDO", unknownSource, "unknown");
+          addEvidenceCard("Ajuste o calidad", "DESCONOCIDO", unknownSource, "unknown");
+        }
+
+        const usedPrice = price ?? (screenshotAnalysis && screenshotAnalysis.price_mxn.value);
+        const usedShipping = shipping ?? (screenshotAnalysis && screenshotAnalysis.shipping_mxn.value);
+        if (typeof usedPrice === "number" && typeof usedShipping === "number") {
+          addEvidenceCard(
+            "Total conocido del producto y envío",
+            formatMoney(usedPrice + usedShipping),
+            "Cálculo local usando los importes conocidos; consulta las tarjetas de precio y envío",
+            "supported",
+            "Prioriza el importe ingresado por el comprador si existe. No incluye cargos desconocidos ni verifica los importes anunciados."
+          );
+        } else {
+          const knownAmount = typeof usedPrice === "number" ? usedPrice : usedShipping;
+          const missingAmount = typeof usedPrice !== "number" ? "precio" : "envío";
+          addEvidenceCard(
+            "Total conocido de compra",
+            typeof knownAmount === "number"
+              ? `PARCIAL: ${formatMoney(knownAmount)}; falta el ${missingAmount}`
+              : "INCOMPLETO; precio y envío DESCONOCIDOS",
+            "Cálculo local; consulta las tarjetas de precio y envío",
+            "unknown",
+            "El total final puede ser mayor por cargos no visibles."
+          );
+        };
         analysisPanel.hidden = false;
       }
+
+      function correctionText(draft) {
+        return `Solicitud de corrección (borrador local, no enviado)\nDato: ${draft.field}\nProblema: ${draft.reason}\nEstado: Borrador local · no enviado · no revisado por una persona\n`;
+      }
+
+      function showCorrectionDraft(draft) {
+        correctionDraft = draft;
+        correctionStatus.textContent = "Borrador local guardado en esta página. No se envió y ninguna persona lo ha revisado.";
+        editCorrectionButton.hidden = false;
+        copyCorrectionButton.hidden = false;
+      }
+
+      correctionForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (!correctionForm.reportValidity()) return;
+        showCorrectionDraft({
+          field: correctionField.value,
+          reason: correctionReason.value.trim()
+        });
+      });
+
+      editCorrectionButton.addEventListener("click", () => {
+        if (!correctionDraft) return;
+        correctionField.value = correctionDraft.field;
+        correctionReason.value = correctionDraft.reason;
+        correctionStatus.textContent = "Edita el borrador y guárdalo de nuevo. Sigue sin enviarse ni haber sido revisado.";
+        correctionForm.scrollIntoView({ behavior: "smooth", block: "center" });
+        correctionReason.focus();
+      });
+
+      copyCorrectionButton.addEventListener("click", async () => {
+        if (!correctionDraft) return;
+        const text = correctionText(correctionDraft);
+        try {
+          await navigator.clipboard.writeText(text);
+          correctionStatus.textContent = "Borrador copiado al portapapeles. No se envió ni fue revisado.";
+        } catch {
+          correctionStatus.textContent = text;
+        }
+      });
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -309,6 +487,7 @@
         if (!form.reportValidity()) return;
 
         const data = new FormData(form);
+        evidenceDate = new Date().toLocaleDateString("es-MX");
         const priceText = String(data.get("price")).trim();
         const price = priceText === "" ? null : Number(priceText);
         const shippingText = String(data.get("shipping")).trim();
@@ -329,6 +508,8 @@
           : shippingKnown
           ? formatMoney(price + shipping)
           : `Incompleto (al menos ${formatMoney(price)})`;
+        document.querySelector("#total-note").textContent =
+          `Fecha consultada: ${evidenceDate}. Total calculado solo con importes conocidos; excluye conceptos desconocidos.`;
         document.querySelector("#result-product").textContent = String(data.get("product")).trim() || "Producto no indicado";
 
         const criteria = [
@@ -343,8 +524,10 @@
         status.classList.remove("error-text");
         status.textContent = "Resumen de los datos que ingresaste. Costos o condiciones que no aparecen se mantienen desconocidos.";
         document.querySelector("#choice-message").textContent = "";
-        analysisPanel.hidden = true;
-        analysisFields.replaceChildren();
+        renderEvidence({
+          price: priceText,
+          shipping: shippingText
+        });
         const file = screenshot.files[0];
         if (!file) {
           setModeBanner("Modo DEMO.", "No se envió una captura ni se ejecutó análisis de IA. Agrega una captura para solicitar extracción visual.");
@@ -388,7 +571,27 @@
             status.textContent += " No se realizó análisis de IA.";
           } else if (result.mode === "live" && result.analysis) {
             setModeBanner("Análisis informativo con IA.", "Los datos extraídos son solo texto anunciado en la captura; no están verificados independientemente.");
-            displayAnalysis(result);
+            evidenceDate = new Date(result.analyzed_at).toLocaleDateString("es-MX");
+            renderEvidence({
+              price: priceText,
+              shipping: shippingText
+            }, result.analysis);
+            if (price === null && result.analysis.price_mxn.value !== null) {
+              document.querySelector("#result-price").textContent = formatMoney(result.analysis.price_mxn.value);
+            }
+            if (!shippingKnown && result.analysis.shipping_mxn.value !== null) {
+              document.querySelector("#result-shipping").textContent = formatMoney(result.analysis.shipping_mxn.value);
+            }
+            const extractedPrice = price ?? result.analysis.price_mxn.value;
+            const extractedShipping = shipping ?? result.analysis.shipping_mxn.value;
+            document.querySelector("#result-total").textContent =
+              typeof extractedPrice === "number" && typeof extractedShipping === "number"
+                ? formatMoney(extractedPrice + extractedShipping)
+                : typeof extractedPrice === "number"
+                  ? `Incompleto (al menos ${formatMoney(extractedPrice)})`
+                  : typeof extractedShipping === "number"
+                    ? `Parcial: ${formatMoney(extractedShipping)}; falta precio`
+                    : "Desconocido";
             status.textContent += " Revisa los campos extraídos; cualquier texto visible se considera anunciado, no verificado.";
           } else {
             throw new Error("La respuesta de análisis no tiene un formato reconocido.");
@@ -411,13 +614,19 @@
           uploadError = "";
           setModeBanner("Modo de demostración.", "Sin una captura y una API disponible, no se ejecuta análisis de IA. Los datos mostrados no son evidencia verificada de un producto real.");
           analysisPanel.hidden = true;
-          analysisFields.replaceChildren();
+          evidenceCards.replaceChildren();
           document.querySelector("#result-price").textContent = "Desconocido";
           document.querySelector("#result-shipping").textContent = "Desconocido";
           document.querySelector("#result-total").textContent = "Desconocido";
+          document.querySelector("#total-note").textContent = "Se calculará con los importes conocidos; no incluye costos desconocidos.";
           document.querySelector("#result-product").textContent = "Tu producto aparecerá aquí";
           document.querySelector("#result-needs").textContent = "Tus criterios se mostrarán aquí; no se usan para generar una recomendación automática.";
           document.querySelector("#choice-message").textContent = "";
+          correctionForm.reset();
+          correctionDraft = null;
+          correctionStatus.textContent = "Sin borrador local.";
+          editCorrectionButton.hidden = true;
+          copyCorrectionButton.hidden = true;
           status.textContent = "Ingresa los datos de una compra para ver un resumen básico. Los datos se quedan en esta página y no se guardan.";
           status.classList.remove("error-text");
         }, 0);
